@@ -31,22 +31,14 @@ jobs:
 
           # 2) Fallback: choose metadata with the highest soumission_id.
           if [ -z "$FILE" ]; then
-            FILE=$(python - <<'PY'
-import glob
-import json
-
-best = (0, "")
-for path in glob.glob("solutions/**/metadata.json", recursive=True):
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            sid = int(json.load(fh).get("soumission_id", 0))
-    except Exception:
-        sid = 0
-    if sid >= best[0]:
-        best = (sid, path)
-print(best[1])
-PY
-)
+            MAX_ID=-1
+            while IFS= read -r CANDIDATE; do
+              SID=$(jq -r '.soumission_id // -1' "$CANDIDATE" 2>/dev/null || echo -1)
+              if [[ "$SID" =~ ^[0-9]+$ ]] && [ "$SID" -ge "$MAX_ID" ]; then
+                MAX_ID="$SID"
+                FILE="$CANDIDATE"
+              fi
+            done < <(find solutions -type f -name metadata.json)
           fi
 
           if [ -z "$FILE" ]; then
