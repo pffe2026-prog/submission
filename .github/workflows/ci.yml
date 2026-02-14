@@ -17,11 +17,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          FILE=$(find solutions -type f -name metadata.json | head -n 1 || true)
+          # Use metadata modified by the current push commit to avoid grading an older submission.
+          FILE=$(git show --name-only --pretty='' "${GITHUB_SHA}" | grep -E '^solutions/.+/metadata\.json$' | head -n 1 || true)
+
+          # Fallback: most recently modified metadata in the working tree.
+          if [ -z "$FILE" ]; then
+            FILE=$(find solutions -type f -name metadata.json -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2- || true)
+          fi
+
           if [ -z "$FILE" ]; then
             echo "metadata.json introuvable dans solutions/"
             exit 1
           fi
+          echo "Metadata selectionnee: $FILE"
           echo "meta_file=$FILE" >> "$GITHUB_OUTPUT"
 
       - name: Show metadata
