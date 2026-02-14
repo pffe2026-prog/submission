@@ -11,18 +11,42 @@ jobs:
     steps:
       - name: Checkout submissions repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Locate metadata file
         id: meta
         shell: bash
         run: |
           set -euo pipefail
-          # Use metadata modified by the current push commit to avoid grading an older submission.
-          FILE=$(git show --name-only --pretty='' "${GITHUB_SHA}" | grep -E '^solutions/.+/metadata\.json$' | head -n 1 || true)
+          FILE=""
 
-          # Fallback: most recently modified metadata in the working tree.
+          # 1) Prefer metadata changed in this push event.
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+          echo "Git before=$BEFORE after=$AFTER"
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            FILE=$(git diff --name-only "$BEFORE" "$AFTER" | grep -E '^solutions/.+/metadata\.json$' | tail -n 1 || true)
+          fi
+
+          # 2) Fallback: choose metadata with the highest soumission_id.
           if [ -z "$FILE" ]; then
-            FILE=$(find solutions -type f -name metadata.json -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2- || true)
+            FILE=$(python - <<'PY'
+import glob
+import json
+
+best = (0, "")
+for path in glob.glob("solutions/**/metadata.json", recursive=True):
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            sid = int(json.load(fh).get("soumission_id", 0))
+    except Exception:
+        sid = 0
+    if sid >= best[0]:
+        best = (sid, path)
+print(best[1])
+PY
+)
           fi
 
           if [ -z "$FILE" ]; then
